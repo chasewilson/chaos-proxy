@@ -3,61 +3,60 @@ Build a simple **TCP proxy** in Go that forwards connections based on the **loca
 
 ---
 
-## Core Requirements - From Project File
+# go TCP Chaos Proxy — Requirements Checklist
 
-### Port-based routing
-- [ ] Local listener ports map to configured upstream `host:port`.
-  - [ ] Verify each configured local port has a corresponding upstream target.
-  - [ ] Ensure startup fails if a local port is duplicated in the config.
-
-### Configuration file
-- [ ] Routes defined via a local config file (JSON or YAML as stated in the file).
-  - [ ] Validate config parses successfully on startup.
-  - [ ] Startup emits a clear error and exits on malformed config.
-
-### Chaos knobs (per-route)
-- [ ] Latency injection (configured `latencyMs`).
-  - [ ] Confirm configured latency is applied to the route.
-- [ ] Connection drop probability (configured `dropRate`).
-  - [ ] Confirm connections are dropped according to the configured probability.
-- [ ] Per-connection timeout (configured `timeoutMs`).
-  - [ ] Confirm timeouts are enforced per connection as configured.
-
-### Connection handling and forwarding
-- [ ] Accept incoming TCP connections on configured local ports.
-  - [ ] Confirm connections are forwarded to the configured upstream.
-  - [ ] Confirm chaos knobs are applied per connection as configured.
-
-### Logging and observable events (as described)
-- [ ] Emit logs for connection events and applied chaos actions.
-  - [ ] Confirm logs indicate when a connection is dropped, delayed, or timed out.
-
-### Shutdown behavior
-- [ ] Support graceful shutdown on termination signals.
-  - [ ] Confirm new connections are stopped during shutdown and in-flight connections are allowed to finish or respect configured timeouts.
-
-### Errors and startup validation
-- [ ] Fail fast on bind or configuration errors with clear messages.
-  - [ ] Confirm process does not continue with partial/invalid route bindings.
-
-### Tests (basic)
-- [ ] Include basic tests or smoke checks demonstrating core behavior described in the file.
-  - [ ] Confirm tests exercise latency, drop, and timeout behaviors at a basic level.
+## Objective
+Build a simple **TCP proxy** in Go that forwards connections based on the **local port** they arrive on.  
+Each port maps to a different upstream target and can optionally inject network faults such as latency, drops, or timeouts.
 
 ---
 
-## Stretch Goals (listed in the project file as intended fit / usage)
+## Functional Requirements
 
-### Local development and test usage
-- [ ] Usable as a local dev/test tool to point clients at the proxy instead of real services.
-  - [ ] Confirm local usage reproduces flaky-link scenarios described in the file.
+### 1. Port-based routing
+- [ ] The proxy reads a configuration file (JSON or YAML) that lists routes.
+  - [ ] Confirm routes include `localPort` and `upstream` fields.
+  - [ ] Validate configuration parses correctly at startup.
+- [ ] The proxy listens on each `localPort` defined in the configuration.
+  - [ ] Confirm each listener starts successfully.
+- [ ] Each incoming TCP connection is forwarded to the corresponding `upstream`.
+  - [ ] Verify correct routing behavior per port mapping.
 
-### Containerization (run in Docker / CI)
-- [ ] Support running the proxy inside a container image (project file notes container use).
-  - [ ] Confirm container startup using a provided config file behaves equivalently to local runs.
+### 2. Data forwarding
+- [ ] For each connection:
+  - [ ] Establish a new TCP connection to the target `upstream`.
+  - [ ] Copy data bidirectionally between client and upstream until either side closes.
+  - [ ] Confirm data integrity is maintained during forwarding.
 
-### Kubernetes deployment (project file mentions Kubernetes-friendly fit)
-- [ ] Runnable in Kubernetes (Deployment or DaemonSet) per the project file.
-  - [ ] Confirm the proxy can be started in-cluster and serve traffic to clients that target it.
+### 3. Chaos behavior
+- [ ] Implement `dropRate` — probability (0.0–1.0) that a connection is dropped instead of proxied.
+  - [ ] Verify that drop behavior follows configured probability.
+- [ ] Implement `latencyMs` — artificial delay before forwarding begins.
+  - [ ] Verify that latency delay occurs prior to upstream connection establishment.
+
+### 4. Configuration validation
+- [ ] Reject duplicate `localPort` values at startup.
+  - [ ] Confirm startup fails if duplicate ports exist.
+- [ ] Detect invalid JSON or YAML configuration.
+  - [ ] Confirm invalid config causes immediate startup error with a clear message.
+
+### 5. Bonus points
+- [ ] Log key events:
+  - [ ] Accepted connections.
+  - [ ] Chosen upstream targets.
+  - [ ] Bytes transferred.
+  - [ ] Injected delays or dropped connections.
+- [ ] Handle SIGINT/SIGTERM signals.
+  - [ ] Stop accepting new connections upon signal.
+  - [ ] Allow in-flight connections to complete before exiting.
+
+---
+
+## Deliverables
+- [ ] `main.go` implementing the described proxy behavior.
+- [ ] Example configuration file demonstrating valid routes.
+- [ ] `README.md` including:
+  - [ ] Instructions for building and running locally.
+  - [ ] Description of design choices and limitations.
 
 ---
