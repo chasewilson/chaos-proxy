@@ -16,9 +16,11 @@ func main() {
 		log.Fatal("config file path is required")
 	}
 
-	routeConfigs, err := config.LoadConfig(*configFile)
-	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+	routeConfigs, errs := config.LoadConfig(*configFile)
+	if len(errs) > 0 {
+		for _, err := range errs {
+			log.Println("Config error:", err)
+		}
 	}
 
 	fmt.Println(routeConfigs)

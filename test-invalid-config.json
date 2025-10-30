@@ -1,0 +1,26 @@
+[
+  {
+    "localPort": 0,
+    "upstream": "http://localhost:9090",
+    "dropRate": 0.1,
+    "latencyMs": 100
+  },
+  {
+    "localPort": 8080,
+    "upstream": "",
+    "dropRate": 0.2,
+    "latencyMs": 200
+  },
+  {
+    "localPort": 8080,
+    "upstream": "http://localhost:9091",
+    "dropRate": -0.5,
+    "latencyMs": 300
+  },
+  {
+    "localPort": 70000,
+    "upstream": "http://localhost:9092",
+    "dropRate": 1.5,
+    "latencyMs": -100
+  }
+]
