@@ -13,6 +13,7 @@ type RouteConfig struct {
 	LatencyMs int     `json:"latencyMs"`
 }
 
+// LoadConfig loads the route configuration from a JSON file.
 func LoadConfig(configPath string) ([]RouteConfig, []error) {
 	file, err := os.Open(configPath)
 	if err != nil {
