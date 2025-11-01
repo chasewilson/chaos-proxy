@@ -10,6 +10,8 @@ import (
 )
 
 func main() {
+	fmt.Println("==> Starting chaos-proxy...")
+
 	configFile := flag.String("config", "", "path to config file")
 	flag.Parse()
 
@@ -17,20 +19,30 @@ func main() {
 		log.Fatal("config file path is required")
 	}
 
+	fmt.Printf("==> Loading config from: %s\n", *configFile)
 	routeConfigs, errs := config.LoadConfig(*configFile)
 	if len(errs) > 0 {
 		for _, err := range errs {
-			log.Println("config error:", err)
+			fmt.Println("config error:", err)
 		}
+		log.Fatal("config validation failed")
 	}
 
+	fmt.Printf("==> Loaded %d route(s)\n", len(routeConfigs))
+	for i, route := range routeConfigs {
+		fmt.Printf("    Route %d: localhost:%d -> %s (drop: %.1f%%, latency: %dms)\n",
+			i+1, route.LocalPort, route.Upstream, route.DropRate*100, route.LatencyMs)
+	}
+
+	fmt.Println("==> Starting listeners...")
 	for _, route := range routeConfigs {
 		// possible optimization: us go routines for each connection
+		fmt.Printf("==> Calling ListenAndServeRoute for port %d...\n", route.LocalPort)
 		err := proxy.ListenAndServeRoute(route)
 		if err != nil {
-			fmt.Errorf("proxy error: %w", err)
+			log.Fatalf("proxy error on port %d: %v", route.LocalPort, err)
 		}
 	}
 
-	fmt.Println(routeConfigs)
+	fmt.Println("==> All routes shut down")
 }
