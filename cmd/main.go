@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/chasewilson/chaos-proxy/internal/config"
+	"github.com/chasewilson/chaos-proxy/internal/proxy"
 )
 
 func main() {
@@ -19,7 +20,15 @@ func main() {
 	routeConfigs, errs := config.LoadConfig(*configFile)
 	if len(errs) > 0 {
 		for _, err := range errs {
-			log.Println("Config error:", err)
+			log.Println("config error:", err)
+		}
+	}
+
+	for _, route := range routeConfigs {
+		// possible optimization: us go routines for each connection
+		err := proxy.ListenAndServeRoute(route)
+		if err != nil {
+			fmt.Errorf("proxy error: %w", err)
 		}
 	}
 
