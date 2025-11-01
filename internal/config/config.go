@@ -3,7 +3,9 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
+	"strconv"
 )
 
 type RouteConfig struct {
@@ -61,6 +63,20 @@ func validateRouteConfig(config RouteConfig, routeIndex int) []error {
 	}
 	if config.Upstream == "" {
 		errs = append(errs, fmt.Errorf("'upstream' cannot be empty (route index: %d)", routeIndex))
+	} else {
+		host, port, err := net.SplitHostPort(config.Upstream)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("invalid upstream format: '%s': must be 'ip:port' format route index: %d", config.Upstream, routeIndex))
+		} else {
+			if net.ParseIP(host) == nil {
+				errs = append(errs, fmt.Errorf("invalid upstream '%s': host must be a valid IP address, not a hostname (route index: %d)", config.Upstream, routeIndex))
+			}
+
+			portNum, err := strconv.Atoi(port)
+			if err != nil || portNum <= 0 || portNum > 65535 {
+				errs = append(errs, fmt.Errorf("invalid upstream port '%s': must be 1 - 65535. (route index: %d)", port, routeIndex))
+			}
+		}
 	}
 	if config.DropRate < 0.0 || config.DropRate > 1.0 {
 		errs = append(errs, fmt.Errorf("invalid drop rate: %f (route index: %d)", config.DropRate, routeIndex))

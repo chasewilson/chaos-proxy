@@ -31,8 +31,13 @@ func ListenAndServeRoute(route config.RouteConfig) error {
 	return nil
 }
 
-func handleConnection(client net.Conn, upstream string) {
+func handleConnection(client net.Conn, upstream string) error {
 	defer client.Close()
 
 	upConnection, err := net.Dial("tcp", upstream)
+	if err != nil {
+		return fmt.Errorf("error dialing upstream %s: %w", upstream, err)
+	}
+	defer upConnection.Close()
+	return nil
 }
