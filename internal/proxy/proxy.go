@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"time"
 
@@ -12,48 +13,59 @@ import (
 )
 
 func ListenAndServeRoute(route config.RouteConfig) error {
+	routeLogger := slog.With("port", route.LocalPort)
 	addr := fmt.Sprintf("127.0.0.1:%d", route.LocalPort)
-	fmt.Printf("    [Port %d] Starting TCP listener on %s...\n", route.LocalPort, addr)
+	routeLogger.Info("starting TCP listener", "address", addr)
 
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		return fmt.Errorf("error starting listener on port %d: %w", route.LocalPort, err)
+		routeLogger.Error("failed to start listener",
+			"error", err,
+			"hint", "port may be in use or you may need elevated permissions")
+		return fmt.Errorf("failed to start listener: %w", err)
 	}
 	defer listener.Close()
 
-	fmt.Printf("    [Port %d] Listener started successfully, waiting for connections...\n", route.LocalPort)
+	routeLogger.Debug("listener started successfully", "address", addr)
 
 	for {
-		fmt.Printf("    [Port %d] Calling Accept() - BLOCKING until connection...\n", route.LocalPort)
+		routeLogger.Info("waiting for connection...")
 		client, err := listener.Accept()
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
-				fmt.Printf("    [Port %d] Listener closed\n", route.LocalPort)
+				routeLogger.Info("listener closed")
 				return nil
 			}
 
-			return fmt.Errorf("error on accepting connection on port %d: %w", route.LocalPort, err)
+			routeLogger.Error("failed to accept connection",
+				"error", err,
+				"hint", "listener may have been closed unexpectedly")
+			return fmt.Errorf("failed to accept connection: %w", err)
 		}
 
-		fmt.Printf("    [Port %d] Connection accepted from %s\n", route.LocalPort, client.RemoteAddr())
-		go handleConnection(client, route)
+		routeLogger.Info("connection accepted", "address", client.RemoteAddr())
+		go handleConnection(client, route, routeLogger)
 	}
 }
 
-func handleConnection(client net.Conn, route config.RouteConfig) {
+func handleConnection(client net.Conn, route config.RouteConfig, routeLogger *slog.Logger) {
 	defer client.Close()
 
 	clientAddr := client.RemoteAddr().String()
-	fmt.Printf("        [Connection %s] Handling new connection, dialing upstream %s...\n", clientAddr, route.Upstream)
+	routeLogger.Debug("handling new connection", "address", clientAddr, "upstream", route.Upstream)
 
 	server, err := net.Dial("tcp", route.Upstream)
 	if err != nil {
-		fmt.Printf("        [Connection %s] ERROR: Failed to connect to upstream %s: %v\n", clientAddr, route.Upstream, err)
+		routeLogger.Error("failed to connect to upstream",
+			"error", err,
+			"hint", fmt.Sprintf("check that upstream server is running and reachable at %s", route.Upstream))
 		return
 	}
 	defer server.Close()
 
-	fmt.Printf("        [Connection %s] Successfully connected to upstream %s\n", clientAddr, route.Upstream)
+	routeLogger.Info("successfully connected to upstream",
+		"address", clientAddr,
+		"upstream", route.Upstream)
 
 	ritual := chaos.Ritual{
 		DropRate:  route.DropRate,
@@ -62,16 +74,22 @@ func handleConnection(client net.Conn, route config.RouteConfig) {
 	curse := chaos.NewCurse(ritual)
 
 	if curse.DropConnections {
-		fmt.Printf("        [Connection %s] CHAOS: Failed to connect to upstream %s\n", clientAddr, route.Upstream)
-		server.Close()
+		routeLogger.Error("[CHAOS] dropping connections",
+			"address", clientAddr,
+			"upstream", route.Upstream,
+			"error", err)
 		client.Close()
+		server.Close()
 		return
 	}
 
 	done := make(chan struct{}, 2)
 	go func() {
 		if curse.StartDelay > 0 {
-			fmt.Printf("        [Connection %s] CHAOS: Adding %v milliseconds delay to upstream %s\n", clientAddr, curse.StartDelay, route.Upstream)
+			routeLogger.Info("[CHAOS] adding delay to upstream",
+				"address", clientAddr,
+				"upstream", route.Upstream,
+				"delay", curse.StartDelay)
 			time.Sleep(curse.StartDelay)
 		}
 		io.Copy(client, server)

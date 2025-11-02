@@ -38,9 +38,9 @@ Each port maps to a different upstream target and can optionally inject network 
 
 **Testing/Verification:**
 
-- [ ] Verify correct port-to-upstream mapping
-- [ ] Test with multiple simultaneous connections
-- [ ] Confirm each listener starts on correct port
+- [x] Verify correct port-to-upstream mapping
+- [x] Test with multiple simultaneous connections
+- [x] Confirm each listener starts on correct port
 
 **Stretch:**
 
@@ -57,8 +57,8 @@ Each port maps to a different upstream target and can optionally inject network 
 
 **Testing/Verification:**
 
-- [ ] Verify data passes through unchanged
-- [ ] Test bidirectional data flow
+- [x] Verify data passes through unchanged
+- [x] Test bidirectional data flow
 - [ ] Confirm cleanup on connection close
 
 **Stretch:**
@@ -76,9 +76,9 @@ Each port maps to a different upstream target and can optionally inject network 
 
 **Testing/Verification:**
 
-- [ ] Verify drop rate follows configured probability
-- [ ] Confirm latency delay timing
-- [ ] Test chaos behavior doesn't corrupt data
+- [x] Verify drop rate follows configured probability
+- [x] Confirm latency delay timing
+- [x] Test chaos behavior doesn't corrupt data
 
 **Stretch:**
 

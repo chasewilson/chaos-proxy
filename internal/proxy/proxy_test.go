@@ -3,12 +3,26 @@ package proxy
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/chasewilson/chaos-proxy/internal/config"
 )
+
+// TestMain sets up a silent logger for all tests to avoid cluttering test output
+func TestMain(m *testing.M) {
+	// Set up a silent logger (only errors) for tests
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelError, // Only show errors in tests
+	}))
+	slog.SetDefault(logger)
+
+	// Run tests
+	os.Exit(m.Run())
+}
 
 // TestListenAndServeRoute_StartListener tests that the listener starts successfully
 func TestListenAndServeRoute_StartListener(t *testing.T) {
@@ -325,7 +339,8 @@ func TestDropRate(t *testing.T) {
 			time.Sleep(50 * time.Millisecond)
 
 			// For deterministic cases, test directly
-			if tt.dropRate == 1.0 {
+			switch tt.dropRate {
+			case 1.0:
 				// Should always drop
 				client, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", proxyPort))
 				if err != nil {
@@ -340,7 +355,7 @@ func TestDropRate(t *testing.T) {
 				if err == nil {
 					t.Error("expected connection to be dropped with dropRate 1.0, but connection remained open")
 				}
-			} else if tt.dropRate == 0.0 {
+			case 0.0:
 				// Should never drop
 				client, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", proxyPort))
 				if err != nil {
@@ -365,7 +380,7 @@ func TestDropRate(t *testing.T) {
 				if received != msg {
 					t.Errorf("data mismatch: got %q, want %q", received, msg)
 				}
-			} else {
+			default:
 				// For probabilistic cases, do statistical test
 				iterations := 100
 				drops := 0

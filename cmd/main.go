@@ -2,58 +2,74 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 
 	"github.com/chasewilson/chaos-proxy/internal/config"
+	"github.com/chasewilson/chaos-proxy/internal/logger"
 	"github.com/chasewilson/chaos-proxy/internal/proxy"
 )
 
+var (
+	configFile = flag.String("config", "", "path to config file")
+	verbose    = flag.Bool("verbose", false, "enable verbose/debug output")
+	quiet      = flag.Bool("quiet", false, "enable quite output (errors only)")
+)
+
 func main() {
-	fmt.Println("==> Starting chaos-proxy...")
-
-	configFile := flag.String("config", "", "path to config file")
-	verbose := flag.Bool("verbose", false, "enable verbose/debug output")
 	flag.Parse()
+	logger.NewLogger(*verbose, *quiet)
 
-	logLevel := slog.LevelInfo
-	if verbose {
-		logLevel = slog.LevelDebug
-	}
-
+	slog.Info("starting", "app", "chaos-proxy")
 	if *configFile == "" {
-		slog.("config file path is required")
+		slog.Error("config file path is required",
+			"flag", "-config",
+			"hint", "usage: chaos-proxy -config <path-to-config.json>",
+			"example", "chaos-proxy -config test-config.json")
+		os.Exit(2)
 	}
 
-	fmt.Printf("==> Loading config from: %s\n", *configFile)
-	routeConfigs, errs := config.LoadConfig(*configFile)
-	if len(errs) > 0 {
-		for _, err := range errs {
-			fmt.Println("config error:", err)
-		}
-		log.Fatal("config validation failed")
+	slog.Info("loading config", "file", *configFile)
+	routeConfigs, err := config.LoadConfig(*configFile)
+	if err != nil {
+		slog.Error("config validation failed",
+			"file", *configFile,
+			"error", err,
+			"hint", "check the error messages above for specific issues and fix them in your config file")
+		os.Exit(2)
 	}
-
-	fmt.Printf("==> Loaded %d route(s)\n", len(routeConfigs))
+	slog.Info("config loaded", "file", *configFile, "routes", len(routeConfigs))
 	for i, route := range routeConfigs {
-		fmt.Printf("    Route %d: localhost:%d -> %s (drop: %.1f%%, latency: %dms)\n",
-			i+1, route.LocalPort, route.Upstream, route.DropRate*100, route.LatencyMs)
+		slog.Debug("route loaded",
+			"index", i+1,
+			"port", route.LocalPort,
+			"upstream", route.Upstream,
+			"dropRate", route.DropRate*100,
+			"latencyMs", route.LatencyMs,
+		)
 	}
 
-	fmt.Println("==> Starting listeners...")
+	slog.Info("starting listeners")
 	var wg sync.WaitGroup
 	for _, route := range routeConfigs {
 		// possible optimization: us go routines for each connection
-		fmt.Printf("==> Calling ListenAndServeRoute for port %d...\n", route.LocalPort)
-		wg.Go(func() {
-			err := proxy.ListenAndServeRoute(route)
+		slog.Debug("calling ListenAndServeRoute", "port", route.LocalPort)
+		wg.Add(1)
+		go func(r config.RouteConfig) {
+			defer wg.Done()
+			err := proxy.ListenAndServeRoute(r)
 			if err != nil {
-				log.Fatalf("proxy error on port %d: %v", route.LocalPort, err)
+				slog.Error("proxy listener failed",
+					"port", r.LocalPort,
+					"upstream", r.Upstream,
+					"error", err,
+					"hint", "check that the port is not already in use and you have necessary permissions")
+				os.Exit(1)
 			}
-		})
+		}(route)
 	}
 
 	wg.Wait()
-	fmt.Println("==> All routes shut down")
+	slog.Info("all routes shut down")
 }
