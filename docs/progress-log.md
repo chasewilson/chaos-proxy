@@ -2,7 +2,7 @@
 
 ## 2025-11-01 - Proxy Implementation & Configuration Validation Refinement
 
-### Context
+### Context 11-01
 
 Started implementing the proxy functionality in `internal/proxy/proxy.go`. While testing with `localhost:9090` as upstream addresses, discovered that Go's `net.Dial()` expects an explicit address format. This led to implementing strict upstream validation to catch configuration errors at load time rather than at runtime.
 
@@ -73,7 +73,7 @@ All tests passing.
 
 ## 2025-10-30 - Configuration System Complete
 
-### Context
+### Context 10-30
 
 Built the configuration loading and validation system. This work focused on catching invalid configurations early and providing clear error messages to users.
 

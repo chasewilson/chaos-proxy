@@ -64,5 +64,6 @@ func handleConnection(client net.Conn, route config.RouteConfig) {
 	}()
 
 	<-done
-	<-done
+	// Requirement is that it waits for either side to close. Can remove comment if needed.
+	// <-done
 }

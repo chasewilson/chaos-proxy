@@ -14,49 +14,98 @@ Each port maps to a different upstream target and can optionally inject network 
 
 ## Functional Requirements
 
-### 1. Input validation
+### 1. Configuration
 
-- [x] The proxy reads a configuration file (JSON or YAML) that lists routes.
-- [x] Confirm routes include `localPort` and `upstream` fields.
-- [x] Validate configuration parses correctly at startup.
-- [x] Reject duplicate `localPort` values at startup.
-- [x] Confirm startup fails if duplicate ports exist.
-- [x] Detect invalid JSON or YAML configuration.
-- [x] Confirm invalid config causes immediate startup error with a clear message.
+**Core:**
 
-### 2. Proxy behavior
+- [x] Read configuration file (JSON or YAML) listing routes
+- [x] Each route includes `localPort` and `upstream`
+- [x] Reject duplicate `localPort` values at startup
+- [x] Invalid JSON/YAML causes immediate error with clear message
 
-#### 2.1 Port-based routing
+**Testing/Verification:**
 
-- [x] The proxy listens on each `localPort` defined in the configuration.
-- [x] Confirm each listener starts successfully.
-- [ ] Each incoming TCP connection is forwarded to the corresponding `upstream`.
-- [ ] Verify correct routing behavior per port mapping.
+- [x] Confirm routes parse with expected fields
+- [x] Verify startup behavior with invalid configurations
+- [x] Test duplicate port detection
 
-#### 2.2 Data forwarding
+### 2. Port-based Routing
 
-- [ ] For each connection:
-  - [ ] Establish a new TCP connection to the target `upstream`.
-  - [ ] Copy data bidirectionally between client and upstream until either side closes.
-  - [ ] Confirm data integrity is maintained during forwarding.
+**Core:**
 
-### 3. Chaos behavior
+- [x] Listen on each `localPort` defined in configuration
+- [x] Forward each incoming TCP connection to corresponding `upstream`
 
-- [ ] Implement `dropRate` (probability 0.0 to 1.0) that a connection is dropped instead of proxied.
-- [ ] Verify that drop behavior follows configured probability.
-- [ ] Implement `latencyMs` (artificial delay before forwarding begins).
-- [ ] Verify that latency delay occurs prior to upstream connection establishment.
+**Testing/Verification:**
 
-### 4. Bonus points
+- [ ] Verify correct port-to-upstream mapping
+- [ ] Test with multiple simultaneous connections
+- [ ] Confirm each listener starts on correct port
 
-- [ ] Log key events:
-  - [ ] Accepted connections.
-  - [ ] Chosen upstream targets.
-  - [ ] Bytes transferred.
-  - [ ] Injected delays or dropped connections.
-- [ ] Handle SIGINT/SIGTERM signals.
-- [ ] Stop accepting new connections upon signal.
-- [ ] Allow in-flight connections to complete before exiting.
+**Stretch:**
+
+- [ ] Per-route connection timeouts
+- [ ] Rate limiting per route
+- [ ] Connection pooling to upstreams
+
+### 3. Data Forwarding
+
+**Core:**
+
+- [x] Establish new TCP connection to target upstream
+- [x] Copy data bidirectionally until either side closes
+
+**Testing/Verification:**
+
+- [ ] Verify data passes through unchanged
+- [ ] Test bidirectional data flow
+- [ ] Confirm cleanup on connection close
+
+**Stretch:**
+
+- [ ] Track bytes transferred per connection
+- [ ] Log data flow statistics
+- [ ] Connection keep-alive support
+
+### 4. Chaos Engineering
+
+**Core:**
+
+- [ ] Implement `dropRate` (0.0–1.0 probability of dropping connection)
+- [ ] Implement `latencyMs` (artificial delay before forwarding begins)
+
+**Testing/Verification:**
+
+- [ ] Verify drop rate follows configured probability
+- [ ] Confirm latency delay timing
+- [ ] Test chaos behavior doesn't corrupt data
+
+**Stretch:**
+
+- [ ] Packet corruption/modification
+- [ ] Bandwidth throttling
+- [ ] Random connection resets
+- [ ] Jitter (variable latency)
+
+### 5. Bonus Features
+
+**Core:**
+
+- [ ] Log key events (connections, upstreams, bytes transferred, chaos events)
+- [ ] Handle SIGINT/SIGTERM gracefully
+  - [ ] Stop accepting new connections
+  - [ ] Allow in-flight connections to complete
+
+**Stretch:**
+
+- [ ] Metrics/monitoring endpoint
+  - [ ] Connection counts per route
+  - [ ] Error rates and types
+  - [ ] Uptime statistics
+- [ ] Health checks
+  - [ ] Periodic upstream health probes
+  - [ ] Automatic upstream failover
+  - [ ] Circuit breaker pattern
 
 ---
 
@@ -65,7 +114,7 @@ Each port maps to a different upstream target and can optionally inject network 
 - [ ] `main.go` implementing the described proxy behavior.
 - [ ] Example configuration file demonstrating valid routes.
 - [ ] `README.md` including:
-- [ ] Instructions for building and running locally.
-- [ ] Description of design choices and limitations.
+  - [ ] Instructions for building and running locally.
+  - [ ] Description of design choices and limitations.
 
 ---
