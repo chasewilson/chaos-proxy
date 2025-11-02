@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/chasewilson/chaos-proxy/internal/config"
@@ -14,10 +14,16 @@ func main() {
 	fmt.Println("==> Starting chaos-proxy...")
 
 	configFile := flag.String("config", "", "path to config file")
+	verbose := flag.Bool("verbose", false, "enable verbose/debug output")
 	flag.Parse()
 
+	logLevel := slog.LevelInfo
+	if verbose {
+		logLevel = slog.LevelDebug
+	}
+
 	if *configFile == "" {
-		log.Fatal("config file path is required")
+		slog.("config file path is required")
 	}
 
 	fmt.Printf("==> Loading config from: %s\n", *configFile)
