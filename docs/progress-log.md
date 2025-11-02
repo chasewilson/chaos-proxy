@@ -1,6 +1,6 @@
 # Progress Log
 
-## 2025-11-01 - Proxy Implementation & Configuration Validation Refinement
+## 2025-11-01 - Proxy Implementation, Configuration Validation & Logging Refinement
 
 ### Context 11-01
 
@@ -39,7 +39,7 @@ Started implementing the proxy functionality in `internal/proxy/proxy.go`. While
   - Missing ports: `127.0.0.1`
   - Invalid ports: `127.0.0.1:99999`
 
-### Testing Updates
+### Configuration Testing Updates
 
 Updated all 46 existing test cases to use valid `ip:port` format instead of hostname-based addresses. Added 5 new test cases specifically for upstream validation:
 
@@ -56,18 +56,114 @@ All tests passing.
 - Created `.vscode/launch.json` for Go debugging sessions with proper `-config` argument
 - Created `test-config.json` with valid IP-based configuration (3 routes: ports 8081-8083)
 
+### Testing & Proxy Refinements
+
+**Proxy module testing** (`internal/proxy/proxy_test.go`):
+
+- **Data forwarding tests**: Bidirectional data transfer verification (simple, empty, multiline, large messages)
+- **Connection handling**: Multiple simultaneous connections, connection cleanup
+- **Chaos behavior tests**:
+  - Drop rate testing (deterministic 0.0/1.0, statistical 0.5)
+  - Latency testing (0ms, 50ms, 100ms, 200ms delays)
+  - Combined chaos scenarios
+- **Upstream failure handling**: Tests behavior when upstream server is unreachable
+
+**Main loop fix**: Updated `cmd/main.go` to properly wait for all goroutines using `sync.WaitGroup`:
+
+```go
+var wg sync.WaitGroup
+for _, route := range routeConfigs {
+    wg.Add(1)
+    go func(r config.RouteConfig) {
+        defer wg.Done()
+        err := proxy.ListenAndServeRoute(r)
+        // ...
+    }(route)
+}
+wg.Wait()
+```
+
+This allows all listeners to start concurrently and remain open. Each route now runs in its own goroutine, fixing the sequential blocking issue.
+
+**Bidirectional communication**: Updated `handleConnection()` to only wait for one side to close (`<-done` once) rather than both, aligning with requirements that connections should remain open until either side closes.
+
 ### Key Learnings & Open Issues
 
-**Architectural issue identified**: Current implementation starts routes sequentially in a loop. `ListenAndServeRoute()` blocks on `Accept()`, so only the first route ever starts. Routes 2 and 3 never get initialized.
+**Architectural issue resolved**: Fixed sequential route blocking by wrapping each `ListenAndServeRoute()` call in a goroutine with proper `sync.WaitGroup` synchronization.
 
-**Next step**: Need to wrap each `ListenAndServeRoute()` call in a goroutine to allow concurrent listeners.
-
-**Design issue identified**: `handleConnection()` returns `error`, but since it's called with `go`, that return value is discarded into the void. Should either:
+**Design issue identified**: `handleConnection()` returns `error`, but since it's called with `go`, that return value is discarded into the void. Two potential approaches considered:
 
 1. Change signature to not return error (just log internally)
 2. Use error channels if we need to track connection failures
 
+*Note: Decision on this approach was deferred until implementing structured logging (see logging section below).*
+
+**Open issue**: Need to implement graceful shutdown handling (SIGINT/SIGTERM) rather than just cancellation. Currently using `wg.Wait()` which blocks indefinitely.
+
 **Debugging insight**: Used VS Code debugger to trace goroutine execution. Observed defer mechanism (connection cleanup happens before goroutine exit) and understood concurrency timing (main loop prints "Blocking..." before goroutine finishes printing its messages, because they run in parallel).
+
+### Structured Logging Implementation
+
+**Work continued from late 11-01 into early 11-02**: After resolving the proxy implementation issues, work shifted to implementing structured logging. This was a continuous effort spanning the end of 11-01 into the beginning of 11-02 to improve observability and error handling.
+
+#### Logger Package Implementation
+
+**Created `internal/logger/logger.go`** - Centralized logging configuration:
+
+- Uses `slog` for structured logging with level control
+- Supports three modes via flags:
+  - **Default**: `LevelInfo` - Shows important events and errors
+  - **Verbose** (`-verbose`): `LevelDebug` - Shows all detailed debug information
+  - **Quiet** (`-quiet`): `LevelError` - Only shows errors
+- Handles conflicting flags (both `-verbose` and `-quiet` set) with warning message, quiet takes precedence
+- Custom `ReplaceAttr` function removes time from log output (can be re-enabled for production logging)
+
+**Key learnings about slog**:
+
+- **Contextual logging**: Using `slog.With()` to add default key-value pairs to loggers (e.g., `slog.With("file", configPath)` adds file context to all log messages)
+- **Attribute filtering**: Ability to filter out default attributes like time using `ReplaceAttr` callback
+- **Logger chaining**: Can extend loggers throughout program execution (e.g., config logger adds file context, route logger adds port context)
+- **Structured attributes**: All log messages use key-value pairs for programmatic parsing and filtering
+
+#### Enhanced Error Messages
+
+**Updated all error logging** across the codebase to include helpful context:
+
+- **Structured attributes**: Every error includes relevant context (file paths, route indices, port numbers, etc.)
+- **Hint properties**: Added actionable `hint` attributes to error messages providing guidance on how to fix issues
+- **Validation errors**: Enhanced config validation errors with:
+  - Valid ranges (e.g., `"valid_range": "1-65535"`)
+  - Specific values received (e.g., `"port": 99999`)
+  - Examples of correct format (e.g., `"hint": "upstream must be in format 'ip:port' (e.g., '127.0.0.1:9090')"`)
+
+**Error return pattern**: Refactored to return single error from validation functions while detailed errors are logged via slog. This provides best of both worlds - simple error checking for callers, detailed context in logs.
+
+**Goroutine error handling decision**: Resolved the design issue identified earlier regarding `handleConnection()` error returns. After implementing structured logging, decided to change `handleConnection()` signature to not return error - errors are now logged internally via structured logging. This simplifies goroutine error handling since return values from goroutines are discarded anyway, and we get better observability through structured logs.
+
+#### Logging Integration
+
+**Updated all packages** to use structured logging:
+
+- **`cmd/main.go`**: Uses slog for startup, config loading, and lifecycle events
+- **`internal/config/`**: Logger passed through validation functions, includes file context
+- **`internal/proxy/`**: Route logger includes port context, connection logger includes client address
+- **Log levels refined**:
+  - Changed "listener started successfully" from Info to Debug (too verbose for normal operation)
+  - Changed "handling new connection" from Info to Debug (only needed for debugging)
+
+#### Testing Updates for Logging
+
+**Updated all test suites** to work with new logging:
+
+- **`internal/proxy/proxy_test.go`**: Added `TestMain` to set up silent logger (LevelError) to avoid cluttering test output
+- **`internal/config/config_test.go`**: Created `testLogger()` helper, updated validation tests to pass logger instead of config path string
+- **`internal/logger/logger_test.go`**: Comprehensive test coverage:
+  - Default/verbose/quiet mode behavior
+  - Conflict handling (both flags set)
+  - Time removal verification
+  - Log level verification table-driven tests
+
+All tests passing with new logging infrastructure.
 
 ---
 

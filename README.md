@@ -91,7 +91,11 @@ Each port maps to a different upstream target and can optionally inject network 
 
 **Core:**
 
-- [ ] Log key events (connections, upstreams, bytes transferred, chaos events)
+- [ ] Log key events
+  - [x] Connections
+  - [x] Upstreams
+  - [ ] Bytes transferred
+  - [x] Chaos events
 - [ ] Handle SIGINT/SIGTERM gracefully
   - [ ] Stop accepting new connections
   - [ ] Allow in-flight connections to complete
