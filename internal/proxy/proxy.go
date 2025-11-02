@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 
+	"github.com/chasewilson/chaos-proxy/internal/chaos"
 	"github.com/chasewilson/chaos-proxy/internal/config"
 )
 
@@ -52,8 +54,26 @@ func handleConnection(client net.Conn, route config.RouteConfig) {
 	defer server.Close()
 
 	fmt.Printf("        [Connection %s] Successfully connected to upstream %s\n", clientAddr, route.Upstream)
+
+	ritual := chaos.Ritual{
+		DropRate:  route.DropRate,
+		LatencyMs: route.LatencyMs,
+	}
+	curse := chaos.NewCurse(ritual)
+
+	if curse.DropConnections {
+		fmt.Printf("        [Connection %s] CHAOS: Failed to connect to upstream %s\n", clientAddr, route.Upstream)
+		server.Close()
+		client.Close()
+		return
+	}
+
 	done := make(chan struct{}, 2)
 	go func() {
+		if curse.StartDelay > 0 {
+			fmt.Printf("        [Connection %s] CHAOS: Adding %v milliseconds delay to upstream %s\n", clientAddr, curse.StartDelay, route.Upstream)
+			time.Sleep(curse.StartDelay)
+		}
 		io.Copy(client, server)
 		done <- struct{}{}
 	}()

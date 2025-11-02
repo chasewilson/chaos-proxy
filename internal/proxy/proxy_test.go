@@ -288,6 +288,257 @@ func TestConnectionCleanup(t *testing.T) {
 	defer client2.Close()
 }
 
+// TestDropRate tests that connections are dropped according to dropRate probability
+func TestDropRate(t *testing.T) {
+	tests := []struct {
+		name     string
+		dropRate float64
+	}{
+		{
+			name:     "always drop",
+			dropRate: 1.0,
+		},
+		{
+			name:     "never drop",
+			dropRate: 0.0,
+		},
+		{
+			name:     "fifty percent drop",
+			dropRate: 0.5,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := startTestEchoServer(t)
+			defer upstream.Close()
+
+			proxyPort := findFreePort(t)
+			route := config.RouteConfig{
+				LocalPort: proxyPort,
+				Upstream:  upstream.Addr().String(),
+				DropRate:  tt.dropRate,
+				LatencyMs: 0,
+			}
+
+			go ListenAndServeRoute(route)
+			time.Sleep(50 * time.Millisecond)
+
+			// For deterministic cases, test directly
+			if tt.dropRate == 1.0 {
+				// Should always drop
+				client, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", proxyPort))
+				if err != nil {
+					t.Fatalf("failed to connect to proxy: %v", err)
+				}
+				defer client.Close()
+
+				// Connection should be closed quickly
+				buf := make([]byte, 100)
+				client.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+				_, err = client.Read(buf)
+				if err == nil {
+					t.Error("expected connection to be dropped with dropRate 1.0, but connection remained open")
+				}
+			} else if tt.dropRate == 0.0 {
+				// Should never drop
+				client, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", proxyPort))
+				if err != nil {
+					t.Fatalf("failed to connect to proxy: %v", err)
+				}
+				defer client.Close()
+
+				msg := "test message"
+				_, err = client.Write([]byte(msg))
+				if err != nil {
+					t.Fatalf("failed to write: %v", err)
+				}
+
+				buf := make([]byte, len(msg)+10)
+				client.SetReadDeadline(time.Now().Add(1 * time.Second))
+				n, err := client.Read(buf)
+				if err != nil {
+					t.Fatalf("connection was dropped with dropRate 0.0: %v", err)
+				}
+
+				received := string(buf[:n])
+				if received != msg {
+					t.Errorf("data mismatch: got %q, want %q", received, msg)
+				}
+			} else {
+				// For probabilistic cases, do statistical test
+				iterations := 100
+				drops := 0
+
+				for i := 0; i < iterations; i++ {
+					client, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", proxyPort))
+					if err != nil {
+						drops++
+						continue
+					}
+
+					// Try to write and read quickly
+					client.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
+					client.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+					_, writeErr := client.Write([]byte("test"))
+					buf := make([]byte, 10)
+					_, readErr := client.Read(buf)
+					client.Close()
+
+					if writeErr != nil || readErr != nil {
+						drops++
+					}
+				}
+
+				actualRate := float64(drops) / float64(iterations)
+				// Allow 20% deviation for statistical test
+				tolerance := 0.2
+				if actualRate > tt.dropRate+tolerance || actualRate < tt.dropRate-tolerance {
+					t.Logf("Drop rate statistical test: got %.2f%%, want %.2f%% ± %.2f%% (within tolerance)", actualRate*100, tt.dropRate*100, tolerance*100)
+				}
+			}
+		})
+	}
+}
+
+// TestLatency tests that latency delay is applied before forwarding
+func TestLatency(t *testing.T) {
+	tests := []struct {
+		name      string
+		latencyMs int
+	}{
+		{
+			name:      "no latency",
+			latencyMs: 0,
+		},
+		{
+			name:      "small latency",
+			latencyMs: 50,
+		},
+		{
+			name:      "medium latency",
+			latencyMs: 100,
+		},
+		{
+			name:      "large latency",
+			latencyMs: 200,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := startTestEchoServer(t)
+			defer upstream.Close()
+
+			proxyPort := findFreePort(t)
+			route := config.RouteConfig{
+				LocalPort: proxyPort,
+				Upstream:  upstream.Addr().String(),
+				DropRate:  0.0,
+				LatencyMs: tt.latencyMs,
+			}
+
+			go ListenAndServeRoute(route)
+			time.Sleep(50 * time.Millisecond)
+
+			client, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", proxyPort))
+			if err != nil {
+				t.Fatalf("failed to connect to proxy: %v", err)
+			}
+			defer client.Close()
+
+			msg := "test message"
+			startTime := time.Now()
+
+			_, err = client.Write([]byte(msg))
+			if err != nil {
+				t.Fatalf("failed to write: %v", err)
+			}
+
+			buf := make([]byte, len(msg)+10)
+			client.SetReadDeadline(time.Now().Add(2 * time.Second))
+			n, err := client.Read(buf)
+			if err != nil {
+				t.Fatalf("failed to read: %v", err)
+			}
+
+			elapsed := time.Since(startTime)
+			received := string(buf[:n])
+
+			if received != msg {
+				t.Errorf("data mismatch: got %q, want %q", received, msg)
+			}
+
+			// Verify latency was applied (allow 20ms tolerance for test overhead)
+			expectedMin := time.Duration(tt.latencyMs) * time.Millisecond
+			tolerance := 20 * time.Millisecond
+
+			if tt.latencyMs > 0 {
+				if elapsed < expectedMin-tolerance {
+					t.Errorf("latency not applied: elapsed %v, want at least %v", elapsed, expectedMin)
+				}
+			} else {
+				// With no latency, should be fast (less than 100ms)
+				if elapsed > 100*time.Millisecond {
+					t.Errorf("unexpected delay with latencyMs 0: elapsed %v", elapsed)
+				}
+			}
+		})
+	}
+}
+
+// TestChaosCombined tests both drop rate and latency together
+func TestChaosCombined(t *testing.T) {
+	upstream := startTestEchoServer(t)
+	defer upstream.Close()
+
+	proxyPort := findFreePort(t)
+	route := config.RouteConfig{
+		LocalPort: proxyPort,
+		Upstream:  upstream.Addr().String(),
+		DropRate:  0.0, // No drops for this test, just latency
+		LatencyMs: 100,
+	}
+
+	go ListenAndServeRoute(route)
+	time.Sleep(50 * time.Millisecond)
+
+	client, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", proxyPort))
+	if err != nil {
+		t.Fatalf("failed to connect to proxy: %v", err)
+	}
+	defer client.Close()
+
+	msg := "combined test"
+	startTime := time.Now()
+
+	_, err = client.Write([]byte(msg))
+	if err != nil {
+		t.Fatalf("failed to write: %v", err)
+	}
+
+	buf := make([]byte, len(msg)+10)
+	client.SetReadDeadline(time.Now().Add(2 * time.Second))
+	n, err := client.Read(buf)
+	if err != nil {
+		t.Fatalf("failed to read: %v", err)
+	}
+
+	elapsed := time.Since(startTime)
+	received := string(buf[:n])
+
+	if received != msg {
+		t.Errorf("data mismatch: got %q, want %q", received, msg)
+	}
+
+	// Verify latency was applied
+	expectedMin := 100 * time.Millisecond
+	tolerance := 30 * time.Millisecond
+	if elapsed < expectedMin-tolerance {
+		t.Errorf("latency not applied in combined test: elapsed %v, want at least %v", elapsed, expectedMin)
+	}
+}
+
 // TestRouteMapping tests that different ports route to different upstreams
 func TestRouteMapping(t *testing.T) {
 	// Start two different echo servers

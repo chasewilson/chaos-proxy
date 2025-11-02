@@ -71,8 +71,8 @@ Each port maps to a different upstream target and can optionally inject network 
 
 **Core:**
 
-- [ ] Implement `dropRate` (0.0–1.0 probability of dropping connection)
-- [ ] Implement `latencyMs` (artificial delay before forwarding begins)
+- [x] Implement `dropRate` (0.0–1.0 probability of dropping connection)
+- [x] Implement `latencyMs` (artificial delay before forwarding begins)
 
 **Testing/Verification:**
 
