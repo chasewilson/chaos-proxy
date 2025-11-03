@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -59,7 +60,7 @@ func TestListenAndServeRoute_StartListener(t *testing.T) {
 			// Start the proxy in a goroutine
 			errChan := make(chan error, 1)
 			go func() {
-				errChan <- ListenAndServeRoute(route)
+				errChan <- ListenAndServeRoute(context.Background(), route)
 			}()
 
 			// Give it time to start
@@ -125,7 +126,7 @@ func TestDataForwarding_Bidirectional(t *testing.T) {
 				LatencyMs: 0,
 			}
 
-			go ListenAndServeRoute(route)
+			go ListenAndServeRoute(context.Background(), route)
 			time.Sleep(50 * time.Millisecond) // Let listener start
 
 			// Connect to proxy
@@ -174,7 +175,7 @@ func TestMultipleConnections(t *testing.T) {
 		LatencyMs: 0,
 	}
 
-	go ListenAndServeRoute(route)
+	go ListenAndServeRoute(context.Background(), route)
 	time.Sleep(50 * time.Millisecond)
 
 	// Create multiple concurrent connections
@@ -244,7 +245,7 @@ func TestUpstreamUnreachable(t *testing.T) {
 		LatencyMs: 0,
 	}
 
-	go ListenAndServeRoute(route)
+	go ListenAndServeRoute(context.Background(), route)
 	time.Sleep(50 * time.Millisecond)
 
 	// Try to connect to proxy
@@ -279,7 +280,7 @@ func TestConnectionCleanup(t *testing.T) {
 		LatencyMs: 0,
 	}
 
-	go ListenAndServeRoute(route)
+	go ListenAndServeRoute(context.Background(), route)
 	time.Sleep(50 * time.Millisecond)
 
 	// Connect and then close immediately
@@ -335,7 +336,7 @@ func TestDropRate(t *testing.T) {
 				LatencyMs: 0,
 			}
 
-			go ListenAndServeRoute(route)
+			go ListenAndServeRoute(context.Background(), route)
 			time.Sleep(50 * time.Millisecond)
 
 			// For deterministic cases, test directly
@@ -453,7 +454,7 @@ func TestLatency(t *testing.T) {
 				LatencyMs: tt.latencyMs,
 			}
 
-			go ListenAndServeRoute(route)
+			go ListenAndServeRoute(context.Background(), route)
 			time.Sleep(50 * time.Millisecond)
 
 			client, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", proxyPort))
@@ -515,7 +516,7 @@ func TestChaosCombined(t *testing.T) {
 		LatencyMs: 100,
 	}
 
-	go ListenAndServeRoute(route)
+	go ListenAndServeRoute(context.Background(), route)
 	time.Sleep(50 * time.Millisecond)
 
 	client, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", proxyPort))
@@ -581,8 +582,8 @@ func TestRouteMapping(t *testing.T) {
 		LatencyMs: 0,
 	}
 
-	go ListenAndServeRoute(route1)
-	go ListenAndServeRoute(route2)
+	go ListenAndServeRoute(context.Background(), route1)
+	go ListenAndServeRoute(context.Background(), route2)
 	time.Sleep(100 * time.Millisecond)
 
 	// Test route 1
@@ -659,7 +660,7 @@ func TestBytesTransferred(t *testing.T) {
 				LatencyMs: 0,
 			}
 
-			go ListenAndServeRoute(route)
+			go ListenAndServeRoute(context.Background(), route)
 			time.Sleep(50 * time.Millisecond)
 
 			client, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", proxyPort))

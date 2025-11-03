@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log/slog"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 
 	"github.com/chasewilson/chaos-proxy/internal/config"
 	"github.com/chasewilson/chaos-proxy/internal/logger"
@@ -20,6 +23,9 @@ var (
 func main() {
 	flag.Parse()
 	logger.NewLogger(*verbose, *quiet)
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
 	slog.Info("starting", "app", "chaos-proxy")
 	if *configFile == "" {
@@ -51,14 +57,16 @@ func main() {
 	}
 
 	slog.Info("starting listeners")
+
 	var wg sync.WaitGroup
 	for _, route := range routeConfigs {
-		// possible optimization: us go routines for each connection
 		slog.Debug("calling ListenAndServeRoute", "port", route.LocalPort)
 		wg.Add(1)
 		go func(r config.RouteConfig) {
 			defer wg.Done()
-			err := proxy.ListenAndServeRoute(r)
+			listenerCtx, listenerCancel := context.WithCancel(ctx)
+			defer listenerCancel()
+			err := proxy.ListenAndServeRoute(listenerCtx, r)
 			if err != nil {
 				slog.Error("proxy listener failed",
 					"port", r.LocalPort,

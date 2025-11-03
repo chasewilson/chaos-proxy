@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -17,7 +18,7 @@ type bytesTransferred struct {
 	bytes     int64
 }
 
-func ListenAndServeRoute(route config.RouteConfig) error {
+func ListenAndServeRoute(ctx context.Context, route config.RouteConfig) error {
 	routeLogger := slog.With("port", route.LocalPort)
 	addr := fmt.Sprintf("127.0.0.1:%d", route.LocalPort)
 	routeLogger.Info("starting TCP listener", "address", addr)
@@ -31,12 +32,18 @@ func ListenAndServeRoute(route config.RouteConfig) error {
 
 	routeLogger.Debug("listener started successfully", "address", addr)
 
+	go func() {
+		<-ctx.Done()
+		routeLogger.Debug("context cancelled, closing listener", "address", addr)
+		listener.Close()
+	}()
+
 	for {
-		routeLogger.Info("waiting for connection...")
+		routeLogger.Debug("waiting for connection...")
 		client, err := listener.Accept()
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
-				routeLogger.Info("listener closed")
+				routeLogger.Debug("listener closed")
 				return nil
 			}
 
@@ -44,12 +51,12 @@ func ListenAndServeRoute(route config.RouteConfig) error {
 			return fmt.Errorf("failed to accept connection: %w", err)
 		}
 
-		routeLogger.Info("connection accepted", "address", client.RemoteAddr())
-		go handleConnection(client, route, routeLogger)
+		routeLogger.Debug("connection accepted", "address", client.RemoteAddr())
+		go handleConnection(ctx, client, route, routeLogger)
 	}
 }
 
-func handleConnection(client net.Conn, route config.RouteConfig, routeLogger *slog.Logger) {
+func handleConnection(ctx context.Context, client net.Conn, route config.RouteConfig, routeLogger *slog.Logger) {
 	defer client.Close()
 
 	clientAddr := client.RemoteAddr().String()
@@ -62,9 +69,7 @@ func handleConnection(client net.Conn, route config.RouteConfig, routeLogger *sl
 	}
 	defer server.Close()
 
-	routeLogger.Info("successfully connected to upstream",
-		"address", clientAddr,
-		"upstream", route.Upstream)
+	routeLogger.Info("successfully connected to upstream", "address", clientAddr, "upstream", route.Upstream)
 
 	ritual := chaos.Ritual{
 		DropRate:  route.DropRate,
@@ -73,21 +78,30 @@ func handleConnection(client net.Conn, route config.RouteConfig, routeLogger *sl
 	curse := chaos.NewCurse(ritual)
 
 	if curse.DropConnections {
-		routeLogger.Error("[CHAOS] dropping connections", "address", clientAddr, "upstream", route.Upstream)
-
-		client.Close()
-		server.Close()
+		routeLogger.Info("[CHAOS] dropping connections", "address", clientAddr, "upstream", route.Upstream)
 		return
 	}
+
+	go func() {
+		<-ctx.Done()
+		routeLogger.Debug("context cancelled, closing connection", "address", clientAddr, "upstream", route.Upstream)
+		_ = client.Close()
+		_ = server.Close()
+	}()
 
 	done := make(chan struct{}, 2)
 	bytesResults := make(chan bytesTransferred, 2)
 
-	routeLogger.Info("starting data forwarding", "address", clientAddr, "upstream", route.Upstream)
+	routeLogger.Debug("starting data forwarding", "address", clientAddr, "upstream", route.Upstream)
 	go func() {
 		if curse.StartDelay > 0 {
 			routeLogger.Info("[CHAOS] adding delay to upstream", "address", clientAddr, "upstream", route.Upstream, "delay", curse.StartDelay)
-			time.Sleep(curse.StartDelay)
+			select {
+			case <-time.After(curse.StartDelay):
+
+			case <-ctx.Done():
+				return
+			}
 		}
 		written, _ := io.Copy(client, server)
 		bytesResults <- bytesTransferred{
@@ -121,8 +135,5 @@ func handleConnection(client net.Conn, route config.RouteConfig, routeLogger *sl
 
 	routeLogger.Debug("connection closed", "address", clientAddr, "upstream", route.Upstream)
 
-	// at this point, this <-done is redundant because we've already waited for both directions to complete
-	// to get the bytes copied. Will need to adjust if we want to ensure we can handle graceful shutdowns
-	// and meet the requirement of closing the connection when "either" side closes.
 	<-done
 }
