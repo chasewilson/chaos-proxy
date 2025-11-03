@@ -1,0 +1,39 @@
+[
+  {
+    "localPort": 8180,
+    "upstream": "127.0.0.1:4000",
+    "dropRate": 0.0,
+    "latencyMs": 50
+  },
+  {
+    "localPort": 8181,
+    "upstream": "127.0.0.1:4001",
+    "dropRate": 0.0,
+    "latencyMs": 100
+  },
+  {
+    "localPort": 8182,
+    "upstream": "127.0.0.1:4002",
+    "dropRate": 0.0,
+    "latencyMs": 250
+  },
+  {
+    "localPort": 8183,
+    "upstream": "127.0.0.1:4003",
+    "dropRate": 0.0,
+    "latencyMs": 500
+  },
+  {
+    "localPort": 8184,
+    "upstream": "127.0.0.1:4004",
+    "dropRate": 0.0,
+    "latencyMs": 1000
+  },
+  {
+    "localPort": 8185,
+    "upstream": "127.0.0.1:4005",
+    "dropRate": 0.0,
+    "latencyMs": 3000
+  }
+]
+

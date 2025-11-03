@@ -1,0 +1,16 @@
+[
+  {
+    "localPort": 8180,
+    "upstream": "127.0.0.1:9090",
+    "dropRate": 0.0,
+    "latencyMs": 0
+  },
+  {
+    "localPort": 8180,
+    "upstream": "127.0.0.1:9091",
+    "dropRate": 0.0,
+    "latencyMs": 0
+  }
+]
+
+

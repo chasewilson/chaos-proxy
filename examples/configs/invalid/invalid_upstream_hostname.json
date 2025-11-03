@@ -1,0 +1,10 @@
+[
+  {
+    "localPort": 8180,
+    "upstream": "localhost:9090",
+    "dropRate": 0.0,
+    "latencyMs": 0
+  }
+]
+
+

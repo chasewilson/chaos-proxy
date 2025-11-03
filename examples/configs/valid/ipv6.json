@@ -1,0 +1,10 @@
+[
+  {
+    "localPort": 8186,
+    "upstream": "[::1]:9092",
+    "dropRate": 0.0,
+    "latencyMs": 0
+  }
+]
+
+

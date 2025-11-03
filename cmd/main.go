@@ -8,16 +8,19 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/chasewilson/chaos-proxy/internal/config"
 	"github.com/chasewilson/chaos-proxy/internal/logger"
 	"github.com/chasewilson/chaos-proxy/internal/proxy"
+	"github.com/chasewilson/chaos-proxy/internal/testServer"
 )
 
 var (
 	configFile = flag.String("config", "", "path to config file")
 	verbose    = flag.Bool("verbose", false, "enable verbose/debug output")
 	quiet      = flag.Bool("quiet", false, "enable quite output (errors only)")
+	tS         = flag.Bool("test-server", false, "start up test http servers for proxy testing")
 )
 
 func main() {
@@ -56,8 +59,15 @@ func main() {
 		)
 	}
 
-	slog.Info("starting listeners")
+	if *tS {
+		slog.Info("starting test servers")
+		for _, route := range routeConfigs {
+			go testServer.NewTestServer(route.Upstream)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 
+	slog.Info("starting listeners")
 	var wg sync.WaitGroup
 	for _, route := range routeConfigs {
 		slog.Debug("calling ListenAndServeRoute", "port", route.LocalPort)
