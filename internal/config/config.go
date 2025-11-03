@@ -21,9 +21,7 @@ func LoadConfig(configPath string) ([]RouteConfig, error) {
 	configLogger := slog.With("file", configPath)
 	file, err := os.Open(configPath)
 	if err != nil {
-		configLogger.Error("failed to open config file",
-			"error", err,
-			"hint", "check that the file exists and you have read permissions")
+		configLogger.Error("failed to open config file", "error", err, "hint", "check that the file exists and you have read permissions")
 		return nil, fmt.Errorf("cannot open config file %q: %w", configPath, err)
 	}
 	defer file.Close()
@@ -32,9 +30,7 @@ func LoadConfig(configPath string) ([]RouteConfig, error) {
 	decoder := json.NewDecoder(file)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&config); err != nil {
-		configLogger.Error("invalid JSON in config file",
-			"error", err,
-			"hint", "verify JSON syntax is valid (check for missing commas, quotes, brackets)")
+		configLogger.Error("invalid JSON in config file", "error", err, "hint", "verify JSON syntax is valid (check for missing commas, quotes, brackets)")
 		return nil, fmt.Errorf("invalid JSON in config file %q: %w", configPath, err)
 	}
 
@@ -91,8 +87,7 @@ func validateRouteConfig(config RouteConfig, routeIndex int, configLogger *slog.
 	}
 
 	if config.Upstream == "" {
-		routeLogger.Error("upstream field is empty",
-			"hint", "upstream must be in format 'ip:port' (e.g., '127.0.0.1:9090')")
+		routeLogger.Error("upstream field is empty", "hint", "upstream must be in format 'ip:port' (e.g., '127.0.0.1:9090')")
 		hasErrors = true
 	} else {
 		host, port, err := net.SplitHostPort(config.Upstream)

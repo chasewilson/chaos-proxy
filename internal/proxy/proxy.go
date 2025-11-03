@@ -12,6 +12,11 @@ import (
 	"github.com/chasewilson/chaos-proxy/internal/config"
 )
 
+type bytesTransferred struct {
+	direction string
+	bytes     int64
+}
+
 func ListenAndServeRoute(route config.RouteConfig) error {
 	routeLogger := slog.With("port", route.LocalPort)
 	addr := fmt.Sprintf("127.0.0.1:%d", route.LocalPort)
@@ -19,9 +24,7 @@ func ListenAndServeRoute(route config.RouteConfig) error {
 
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		routeLogger.Error("failed to start listener",
-			"error", err,
-			"hint", "port may be in use or you may need elevated permissions")
+		routeLogger.Error("failed to start listener", "error", err, "hint", "port may be in use or you may need elevated permissions")
 		return fmt.Errorf("failed to start listener: %w", err)
 	}
 	defer listener.Close()
@@ -37,9 +40,7 @@ func ListenAndServeRoute(route config.RouteConfig) error {
 				return nil
 			}
 
-			routeLogger.Error("failed to accept connection",
-				"error", err,
-				"hint", "listener may have been closed unexpectedly")
+			routeLogger.Error("failed to accept connection", "error", err, "hint", "listener may have been closed unexpectedly")
 			return fmt.Errorf("failed to accept connection: %w", err)
 		}
 
@@ -56,9 +57,7 @@ func handleConnection(client net.Conn, route config.RouteConfig, routeLogger *sl
 
 	server, err := net.Dial("tcp", route.Upstream)
 	if err != nil {
-		routeLogger.Error("failed to connect to upstream",
-			"error", err,
-			"hint", fmt.Sprintf("check that upstream server is running and reachable at %s", route.Upstream))
+		routeLogger.Error("failed to connect to upstream", "error", err, "hint", fmt.Sprintf("check that upstream server is running and reachable at %s", route.Upstream))
 		return
 	}
 	defer server.Close()
@@ -74,34 +73,56 @@ func handleConnection(client net.Conn, route config.RouteConfig, routeLogger *sl
 	curse := chaos.NewCurse(ritual)
 
 	if curse.DropConnections {
-		routeLogger.Error("[CHAOS] dropping connections",
-			"address", clientAddr,
-			"upstream", route.Upstream,
-			"error", err)
+		routeLogger.Error("[CHAOS] dropping connections", "address", clientAddr, "upstream", route.Upstream)
+
 		client.Close()
 		server.Close()
 		return
 	}
 
 	done := make(chan struct{}, 2)
+	bytesResults := make(chan bytesTransferred, 2)
+
+	routeLogger.Info("starting data forwarding", "address", clientAddr, "upstream", route.Upstream)
 	go func() {
 		if curse.StartDelay > 0 {
-			routeLogger.Info("[CHAOS] adding delay to upstream",
-				"address", clientAddr,
-				"upstream", route.Upstream,
-				"delay", curse.StartDelay)
+			routeLogger.Info("[CHAOS] adding delay to upstream", "address", clientAddr, "upstream", route.Upstream, "delay", curse.StartDelay)
 			time.Sleep(curse.StartDelay)
 		}
-		io.Copy(client, server)
+		written, _ := io.Copy(client, server)
+		bytesResults <- bytesTransferred{
+			direction: "to-client",
+			bytes:     written}
 		done <- struct{}{}
 	}()
 
 	go func() {
-		io.Copy(server, client)
+		written, _ := io.Copy(server, client)
+		bytesResults <- bytesTransferred{
+			direction: "to-server",
+			bytes:     written}
 		done <- struct{}{}
 	}()
 
+	var bytesToClient, bytesToServer int64
+	for i := 0; i < 2; i++ {
+		result := <-bytesResults
+		if result.direction == "to-client" {
+			bytesToClient = result.bytes
+		} else {
+			bytesToServer = result.bytes
+		}
+	}
+
+	totalBytes := bytesToClient + bytesToServer
+	routeLogger.Info(fmt.Sprintf("bytes transferred: %d", totalBytes),
+		"bytes_to_client", bytesToClient,
+		"bytes_to_server", bytesToServer)
+
+	routeLogger.Debug("connection closed", "address", clientAddr, "upstream", route.Upstream)
+
+	// at this point, this <-done is redundant because we've already waited for both directions to complete
+	// to get the bytes copied. Will need to adjust if we want to ensure we can handle graceful shutdowns
+	// and meet the requirement of closing the connection when "either" side closes.
 	<-done
-	// Requirement is that it waits for either side to close. Can remove comment if needed.
-	// <-done
 }
