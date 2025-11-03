@@ -13,7 +13,7 @@ import (
 	"github.com/chasewilson/chaos-proxy/internal/config"
 	"github.com/chasewilson/chaos-proxy/internal/logger"
 	"github.com/chasewilson/chaos-proxy/internal/proxy"
-	"github.com/chasewilson/chaos-proxy/internal/testServer"
+	"github.com/chasewilson/chaos-proxy/internal/testserver"
 )
 
 var (
@@ -62,7 +62,7 @@ func main() {
 	if *tS {
 		slog.Info("starting test servers")
 		for _, route := range routeConfigs {
-			go testServer.NewTestServer(route.Upstream)
+			go testserver.NewTestServer(route.Upstream)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
