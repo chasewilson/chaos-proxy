@@ -677,14 +677,15 @@ func TestBytesTransferred(t *testing.T) {
 				}
 
 				// Read echo response (echo server echoes back)
-				buf := make([]byte, len(tt.clientToServer)+100)
+				// Use io.ReadFull to ensure we read exactly the expected number of bytes
+				buf := make([]byte, len(tt.clientToServer))
 				client.SetReadDeadline(time.Now().Add(2 * time.Second))
-				n, err := client.Read(buf)
-				if err != nil && err != io.EOF {
+				_, err = io.ReadFull(client, buf)
+				if err != nil {
 					t.Fatalf("failed to read: %v", err)
 				}
 
-				received := string(buf[:n])
+				received := string(buf)
 				if received != tt.clientToServer {
 					t.Errorf("data mismatch: got %q, want %q", received, tt.clientToServer)
 				}
@@ -728,7 +729,17 @@ func startTestEchoServer(t *testing.T) net.Listener {
 // handleEcho echoes back everything it receives
 func handleEcho(conn net.Conn) {
 	defer conn.Close()
-	io.Copy(conn, conn) // Echo back
+	buf := make([]byte, 32768)
+	for {
+		n, err := conn.Read(buf)
+		if err != nil {
+			return
+		}
+		_, err = conn.Write(buf[:n])
+		if err != nil {
+			return
+		}
+	}
 }
 
 // findFreePort finds an available port for testing
