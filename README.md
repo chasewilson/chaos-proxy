@@ -186,35 +186,59 @@ This section is written for reviewers. It explains what I built, why I built it 
 
 ### Configuration validation (IP-only, fail fast)
 
-- Problem discovered early: hostnames like `localhost:9090` made it too easy to hide real connectivity issues. For a chaos tool, I wanted explicit routing control.
-- Decision: enforce IP-only upstreams using `net.ParseIP()` and validate `ip:port` via `net.SplitHostPort()`. Supports IPv4 and IPv6.
-- Trade-off: a bit less convenient than hostnames, but more predictable for testing. The validation errors include examples and hints to speed up fixes.
+- **Problem**: During testing, `localhost:9090` worked fine with `net.Dial()`, but hostnames introduce DNS resolution as a variable. In chaos testing, connection failures need clear attribution—is it from injected chaos or DNS lookup/caching? Hostnames also behave differently across environments (local vs container vs cloud).
+- **Solution**: Enforce IP-only upstreams using `net.ParseIP()` and validate `ip:port` format with `net.SplitHostPort()`. Supports both IPv4 and IPv6.
+- **Trade-off**: Less convenient than hostnames, but eliminates DNS as a confounding variable in chaos experiments. Validation errors include examples and hints.
+- **Limitation**: Can't use service discovery by name. Users must resolve IPs before writing config, which doesn't match real-world service mesh patterns where names are the contract.
 
 ### Concurrency model (simple, observable)
 
-- Initial bug: listeners started sequentially and blocked. Fixed by running each `ListenAndServeRoute()` in its own goroutine with a `sync.WaitGroup`.
-- Error handling: rather than plumb error channels through every goroutine, I pivoted to structured logging and removed unused error returns from goroutines. Simpler call sites, better context in logs.
+- **Initial bug**: Listeners started sequentially and blocked (only first route would start).
+- **Solution**: Run each `ListenAndServeRoute()` in its own goroutine with a `sync.WaitGroup` to coordinate shutdown.
+- **Error handling decision**: Rather than add error channels for every goroutine (complexity), pivoted to structured logging. Errors are logged with full context instead of returned. Simpler call sites, better observability.
+- **Limitations**:
+  - If any listener fails to bind (e.g., port in use), program exits via `os.Exit(1)`. No partial operation.
+  - No connection pooling—each connection creates a new upstream connection. Under load, could exhaust file descriptors or upstream limits.
+  - No backpressure if upstreams are slow or unresponsive.
 
 ### Graceful shutdown (requirement-driven correction)
 
-- Requirement: stop accepting new connections on SIGINT/SIGTERM and let in-flight connections finish.
-- I first closed connections on cancel, then corrected it after re-reading the requirement and my own progress notes. I removed the force-close, letting copy loops complete naturally. See 2025‑11‑02 entry in the progress log and commit c15ed382 (graceful shutdown).
+- **Requirement**: Stop accepting new connections on SIGINT/SIGTERM but allow in-flight connections to complete.
+- **Implementation**: Context-based cancellation closes listeners immediately but lets active `io.Copy` loops finish naturally.
+- **Correction**: Initially force-closed connections on context cancel (too aggressive). Re-read requirements and progress notes, removed force-close. See commit c15ed382 and 2025-11-02 log entry.
+- **Limitation**: No grace period timer. If an upstream hangs or a client never closes, shutdown blocks indefinitely. Could add a timeout, but chose simplicity over handling edge cases with additional goroutines and forced cleanup.
 
 ### Logging (structured, practical)
 
-- Chose Go's `slog` for structured, leveled logs with `-verbose` and `-quiet` flags.
-- Used logger chaining (`slog.With`) to add context like file paths, ports, and client addresses. Added actionable `hint` fields on validation and runtime errors.
+- **Approach**: Go's `slog` for structured, leveled logs with `-verbose` and `-quiet` flags.
+- **Implementation**: Logger chaining via `slog.With()` adds context (file paths, ports, client addresses) at each layer. Validation errors include actionable `hint` fields.
+- **Limitations**:
+  - Removed timestamps in the `ReplaceAttr` function (helpful for testing, problematic for production log correlation).
+  - Logs to stdout only—no rotation, remote aggregation, or sampling.
+  - No performance testing under high connection volume; uncertain if structured logging becomes a bottleneck.
+  - Trade-off: Stdlib simplicity over third-party integrations (OpenTelemetry, structured log shippers, metrics correlation).
 
 ### Testing strategy (deterministic + statistical)
 
-- Validation: table-driven tests cover happy paths and edge cases (ranges, formats, duplicates, IPv6).
-- Proxy behavior: deterministic chaos cases (0.0 and 1.0) and statistical checks for mid-probabilities, plus latency and bidirectional copy.
-- Dev ergonomics: added a `-test-server` flag to auto-spin simple HTTP upstreams so I can test end-to-end without extra setup.
+- **Validation tests**: Table-driven tests covering happy paths and edge cases (port ranges, formats, duplicates, IPv6).
+- **Proxy behavior tests**: Deterministic chaos (0.0 and 1.0 drop rates), statistical checks (0.5 drop rate over iterations), latency timing, bidirectional copy correctness.
+- **Dev ergonomics**: `-test-server` flag auto-spins HTTP upstreams for fast iteration without manual setup.
+- **Limitations**:
+  - No integration tests against real services or containerized environments.
+  - Statistical tests could flake under system load (probability-based assertions).
+  - No load/stress testing, no race detector in CI (`-race` flag), no fuzz testing.
+  - Trade-off: Focused on correctness and coverage over performance benchmarks and chaos-at-scale scenarios.
 
 ### Scope and trade-offs
 
-- In scope: TCP proxying, drop rate, latency, structured logs, graceful shutdown, config validation.
-- Deferred: packet-level chaos, bandwidth shaping, hot reload, metrics. I chose to ship a reliable core and document the next steps instead of half-implementing many features.
+- **In scope**: TCP proxying, connection drops, latency injection, structured logs, graceful shutdown, strict config validation.
+- **Deferred**: Packet corruption/reordering, bandwidth throttling, jitter patterns, dynamic reconfiguration, metrics/observability endpoints, health checks, circuit breaking, retry logic.
+- **Real-world limitations**:
+  - Can't simulate nuanced network conditions (gradual degradation, bursty packet loss, asymmetric latency).
+  - No runtime visibility into active connections or chaos events beyond log parsing.
+  - Config changes require full restart (operational friction in production).
+  - No ability to schedule chaos experiments, ramp failure rates gradually, or target specific connection patterns.
+- **Rationale**: Ship a reliable, testable core with clear documentation rather than spread effort across half-implemented features. Demonstrates depth in fundamentals (concurrency, validation, testing) over breadth without quality.
 
 ## Future Evolution
 

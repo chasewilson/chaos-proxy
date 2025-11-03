@@ -1,5 +1,83 @@
 # Progress Log
 
+## 2025-11-03 - Documentation Polish, Example Configs & Test Server Feature
+
+### Context 11-03
+
+After completing core functionality, shifted focus to developer experience and interview presentation. Created comprehensive example configurations, implemented a test server feature to eliminate manual test setup, and rewrote the README to tell the story of design decisions and trade-offs rather than just list features.
+
+### Example Configuration Library
+
+**Created comprehensive config examples** to demonstrate different use cases and validation behavior:
+
+**Valid configurations** (`examples/configs/valid/`):
+
+- `basic.json` - Simple pass-through proxy (getting started)
+- `multiple_routes.json` - Three services with progressive chaos (0%, 5%, 15% drop rates)
+- `realistic_chaos.json` - Real-world network conditions (3%, 8%, 20% drop rates)
+- `extreme_conditions.json` - Stress testing scenarios (75%, 90%, 100% drop rates)
+- `latency_tiers.json` - Six latency tiers testing timeout tolerance (50ms to 3000ms)
+- `ipv6.json` - IPv6 upstream example
+
+**Invalid configurations** (`examples/configs/invalid/`) for testing validation:
+
+- `duplicate_ports.json` - Port uniqueness validation
+- `invalid_upstream_hostname.json` - IP-only requirement
+- `invalid_port_range.json` - Port range bounds checking
+- `invalid_drop_rate.json` - Drop rate bounds (0.0-1.0)
+- `invalid_negative_latency.json` - Non-negative latency requirement
+- `invalid_missing_upstream.json` - Required field validation
+- `invalid_zero_port.json` - Static port assignment requirement
+
+**Port selection**: Avoided common ports like 8080 (often in use). Chose 8180-8186 range for proxy listeners to reduce port conflicts during testing.
+
+### Test Server Feature Implementation
+
+**Problem identified**: Testing required manually starting upstream servers with `nc` or Python's HTTP server before each test run. This created friction during development and demonstration.
+
+**Solution**: Added `-test-server` flag that automatically spins up simple HTTP servers on all configured upstream addresses.
+
+**Implementation details**:
+
+- Created `internal/testserver/testserver.go` with `NewTestServer()` function
+- Uses `http.NewServeMux()` to create isolated handlers (avoids global handler conflicts)
+- Runs each test server in a goroutine (non-blocking, don't track with WaitGroup)
+- Test servers log to `slog` like the rest of the application
+- Simple response includes timestamp and "under heavy load (of self-doubt and coffee)" message
+
+**Key learning**: Initially started test servers synchronously, which blocked proxy listener startup. Fixed by launching in goroutines with a brief sleep to let servers bind before proxy starts. This demonstrates the same concurrency pattern used in the main proxy logic.
+
+### README Transformation (Interview-Focused)
+
+**Rewrote design section** to be reviewer-focused rather than feature-focused. Changed from listing what was built to explaining *why* decisions were made and *what limitations* resulted.
+
+**New structure**:
+
+- Problem/Solution/Trade-off/Limitation format for each design area
+- Explicit callouts of production gaps (no connection pooling, no backpressure, shutdown can block indefinitely)
+- Testing limitations acknowledged (no load testing, no race detector in CI, statistical tests could flake)
+- Real-world constraints documented (no hot reload, no metrics, config changes require restart)
+
+**Rationale**: Interview documentation should demonstrate self-awareness and systems thinking. Better to show honest understanding of limitations than pretend they don't exist. This signals senior-level reasoning about trade-offs.
+
+**Technical improvements**:
+
+- Added "Getting Started" section with prerequisites, build, and run instructions
+- Documented all CLI flags (including new `-test-server`)
+- Provided testing examples using the test server feature
+- Updated configuration section with detailed field descriptions
+- Marked all functional requirements as complete
+
+### Key Learnings & Reflections
+
+**Developer experience matters**: The `-test-server` flag was added as a convenience during development but turned out valuable enough to document as a user-facing feature. Good tools often emerge from scratching your own itch.
+
+**Documentation is code review**: Writing honest documentation about limitations forces you to think through production concerns you might otherwise miss. Documenting "why not" is as important as documenting "why."
+
+**Iteration continues**: Even after "completing" requirements, there's value in improving ergonomics, documentation, and presentation. The difference between "works" and "polished" is often the difference between junior and senior execution.
+
+---
+
 ## 2025-11-02 - Graceful Shutdown Implementation
 
 ### Context 11-02
