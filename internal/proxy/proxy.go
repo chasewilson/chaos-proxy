@@ -52,11 +52,11 @@ func ListenAndServeRoute(ctx context.Context, route config.RouteConfig) error {
 		}
 
 		routeLogger.Debug("connection accepted", "address", client.RemoteAddr())
-		go handleConnection(ctx, client, route, routeLogger)
+		go handleConnection(client, route, routeLogger)
 	}
 }
 
-func handleConnection(ctx context.Context, client net.Conn, route config.RouteConfig, routeLogger *slog.Logger) {
+func handleConnection(client net.Conn, route config.RouteConfig, routeLogger *slog.Logger) {
 	defer client.Close()
 
 	clientAddr := client.RemoteAddr().String()
@@ -82,13 +82,6 @@ func handleConnection(ctx context.Context, client net.Conn, route config.RouteCo
 		return
 	}
 
-	go func() {
-		<-ctx.Done()
-		routeLogger.Debug("context cancelled, closing connection", "address", clientAddr, "upstream", route.Upstream)
-		_ = client.Close()
-		_ = server.Close()
-	}()
-
 	done := make(chan struct{}, 2)
 	bytesResults := make(chan bytesTransferred, 2)
 
@@ -96,12 +89,7 @@ func handleConnection(ctx context.Context, client net.Conn, route config.RouteCo
 	go func() {
 		if curse.StartDelay > 0 {
 			routeLogger.Info("[CHAOS] adding delay to upstream", "address", clientAddr, "upstream", route.Upstream, "delay", curse.StartDelay)
-			select {
-			case <-time.After(curse.StartDelay):
-
-			case <-ctx.Done():
-				return
-			}
+			time.Sleep(curse.StartDelay)
 		}
 		written, _ := io.Copy(client, server)
 		bytesResults <- bytesTransferred{

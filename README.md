@@ -42,12 +42,6 @@ Each port maps to a different upstream target and can optionally inject network 
 - [x] Test with multiple simultaneous connections
 - [x] Confirm each listener starts on correct port
 
-**Stretch:**
-
-- [ ] Per-route connection timeouts
-- [ ] Rate limiting per route
-- [ ] Connection pooling to upstreams
-
 ### 3. Data Forwarding
 
 **Core:**
@@ -59,13 +53,7 @@ Each port maps to a different upstream target and can optionally inject network 
 
 - [x] Verify data passes through unchanged
 - [x] Test bidirectional data flow
-- [ ] Confirm cleanup on connection close
-
-**Stretch:**
-
-- [ ] Track bytes transferred per connection
-- [ ] Log data flow statistics
-- [ ] Connection keep-alive support
+- [x] Confirm cleanup on connection close
 
 ### 4. Chaos Engineering
 
@@ -80,42 +68,24 @@ Each port maps to a different upstream target and can optionally inject network 
 - [x] Confirm latency delay timing
 - [x] Test chaos behavior doesn't corrupt data
 
-**Stretch:**
-
-- [ ] Packet corruption/modification
-- [ ] Bandwidth throttling
-- [ ] Random connection resets
-- [ ] Jitter (variable latency)
-
 ### 5. Bonus Features
 
 **Core:**
 
-- [ ] Log key events
+- [x] Log key events
   - [x] Connections
   - [x] Upstreams
-  - [ ] Bytes transferred
+  - [x] Bytes transferred
   - [x] Chaos events
-- [ ] Handle SIGINT/SIGTERM gracefully
-  - [ ] Stop accepting new connections
-  - [ ] Allow in-flight connections to complete
-
-**Stretch:**
-
-- [ ] Metrics/monitoring endpoint
-  - [ ] Connection counts per route
-  - [ ] Error rates and types
-  - [ ] Uptime statistics
-- [ ] Health checks
-  - [ ] Periodic upstream health probes
-  - [ ] Automatic upstream failover
-  - [ ] Circuit breaker pattern
+- [x] Handle SIGINT/SIGTERM gracefully
+  - [x] Stop accepting new connections
+  - [x] Allow in-flight connections to complete
 
 ---
 
 ## Deliverables
 
-- [ ] `main.go` implementing the described proxy behavior.
+- [x] `main.go` implementing the described proxy behavior.
 - [ ] Example configuration file demonstrating valid routes.
 - [ ] `README.md` including:
   - [ ] Instructions for building and running locally.

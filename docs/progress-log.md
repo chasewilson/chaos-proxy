@@ -1,5 +1,67 @@
 # Progress Log
 
+## 2025-11-02 - Graceful Shutdown Implementation
+
+### Context 11-02
+
+Completed the final bonus requirement of implementing graceful shutdown handling for SIGINT/SIGTERM signals. This work addressed the open issue identified on 11-01 where the program used `wg.Wait()` which blocks indefinitely. The implementation uses Go's `context` package to propagate cancellation signals throughout the program architecture.
+
+### Graceful Shutdown Implementation
+
+**Signal handling**: Implemented graceful shutdown using `context.Context` to coordinate shutdown across all goroutines:
+
+- Created root context in `cmd/main.go` that listens for SIGINT/SIGTERM signals
+- Passed context down through the program hierarchy (main → route listeners → connection handlers)
+- Each goroutine watches for context cancellation and exits cleanly when signaled
+- All listeners and active connections close gracefully when shutdown signal is received
+
+**Context propagation pattern**:
+
+- Root context created with `signal.NotifyContext()` for automatic signal handling
+- Context passed to `ListenAndServeRoute()` functions
+- Context propagated to `handleConnection()` goroutines
+- Each level checks `ctx.Done()` to determine when to exit
+
+**Design decision**: Kept implementation simple and straightforward. Initially considered a grace period approach but avoided adding complexity with multiple done channels and additional goroutines that could create confusion and potential resource leaks.
+
+> **Post-implementation review note**: After reviewing requirements, discovered that the initial implementation actually overdid the graceful shutdown. It was forcefully closing active connections immediately when the context was cancelled, rather than allowing them to complete naturally. The requirement explicitly calls for "allowing in-flight connections to complete" rather than terminating them. Fixed by removing the goroutine that watched `ctx.Done()` and closed connections, allowing connections to finish naturally when either side closes or data transfer completes. This is a good reminder to validate implementation against requirements, not just implement what seems like the "right" behavior.
+
+### Log Level Refinements
+
+**Updated log levels** to be more appropriate for production use:
+
+- Refined which messages appear at each log level
+- Ensured quiet/verbose modes provide appropriate detail levels
+- Improved overall logging clarity and usefulness
+
+### Key Learnings
+
+**Context package insights**:
+
+- Multiple approaches possible for context-based cancellation, but simplicity is key
+- Need to carefully evaluate complexity when adding goroutines and channels
+- Context propagation through function signatures provides clean cancellation flow
+
+**Concurrency lessons**:
+
+- Go's concurrency is powerful but can quickly become complex if not carefully managed
+- Multiple done channels and cancellation paths can lead to confusion and bugs
+- Important to keep concurrency patterns simple and understandable
+
+**Channel management**:
+
+- Must be cautious of leaving channels undrained in concurrent code
+- Undrained channels can cause goroutine leaks and unexpected behavior
+- Careful resource management is critical in concurrent programs
+
+**Refactoring approach**:
+
+- Continually evaluate implementation approaches as code evolves
+- Sometimes the simpler solution is the better solution, even if more sophisticated patterns exist
+- Regular refactoring and reassessment helps prevent complexity creep
+
+---
+
 ## 2025-11-01 - Proxy Implementation, Configuration Validation & Logging Refinement
 
 ### Context 11-01
@@ -98,7 +160,7 @@ This allows all listeners to start concurrently and remain open. Each route now 
 
 *Note: Decision on this approach was deferred until implementing structured logging (see logging section below).*
 
-**Open issue**: Need to implement graceful shutdown handling (SIGINT/SIGTERM) rather than just cancellation. Currently using `wg.Wait()` which blocks indefinitely.
+**Open issue resolved on 11-02**: Need to implement graceful shutdown handling (SIGINT/SIGTERM) rather than just cancellation. Currently using `wg.Wait()` which blocks indefinitely. *This was completed on 11-02 using context-based cancellation.*
 
 **Debugging insight**: Used VS Code debugger to trace goroutine execution. Observed defer mechanism (connection cleanup happens before goroutine exit) and understood concurrency timing (main loop prints "Blocking..." before goroutine finishes printing its messages, because they run in parallel).
 
