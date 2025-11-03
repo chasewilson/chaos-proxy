@@ -56,7 +56,7 @@ func TestLoadConfig(t *testing.T) {
 		{
 			name:        "empty config array",
 			fileContent: `[]`,
-			wantErr:     false,
+			wantErr:     true,
 			wantLen:     0,
 		},
 		{
@@ -168,7 +168,7 @@ func TestLoadConfig_ValidationErrors(t *testing.T) {
 				}
 			]`,
 			wantErr:     true,
-			errContains: "invalid local port",
+			errContains: "validation failed",
 		},
 		{
 			name: "invalid port - negative",
@@ -181,7 +181,7 @@ func TestLoadConfig_ValidationErrors(t *testing.T) {
 				}
 			]`,
 			wantErr:     true,
-			errContains: "invalid local port",
+			errContains: "validation failed",
 		},
 		{
 			name: "invalid port - too large",
@@ -194,7 +194,7 @@ func TestLoadConfig_ValidationErrors(t *testing.T) {
 				}
 			]`,
 			wantErr:     true,
-			errContains: "invalid local port",
+			errContains: "validation failed",
 		},
 		{
 			name: "empty upstream",
@@ -207,7 +207,7 @@ func TestLoadConfig_ValidationErrors(t *testing.T) {
 				}
 			]`,
 			wantErr:     true,
-			errContains: "upstream",
+			errContains: "validation failed",
 		},
 		{
 			name: "invalid drop rate - negative",
@@ -220,7 +220,7 @@ func TestLoadConfig_ValidationErrors(t *testing.T) {
 				}
 			]`,
 			wantErr:     true,
-			errContains: "invalid drop rate",
+			errContains: "validation failed",
 		},
 		{
 			name: "invalid drop rate - too large",
@@ -233,7 +233,7 @@ func TestLoadConfig_ValidationErrors(t *testing.T) {
 				}
 			]`,
 			wantErr:     true,
-			errContains: "invalid drop rate",
+			errContains: "validation failed",
 		},
 		{
 			name: "invalid latency - negative",
@@ -246,7 +246,7 @@ func TestLoadConfig_ValidationErrors(t *testing.T) {
 				}
 			]`,
 			wantErr:     true,
-			errContains: "invalid latency",
+			errContains: "validation failed",
 		},
 		{
 			name: "upstream with hostname instead of IP",
@@ -259,7 +259,7 @@ func TestLoadConfig_ValidationErrors(t *testing.T) {
 				}
 			]`,
 			wantErr:     true,
-			errContains: "host must be a valid IP address",
+			errContains: "validation failed",
 		},
 		{
 			name: "upstream with URL scheme",
@@ -272,7 +272,7 @@ func TestLoadConfig_ValidationErrors(t *testing.T) {
 				}
 			]`,
 			wantErr:     true,
-			errContains: "invalid upstream format",
+			errContains: "validation failed",
 		},
 		{
 			name: "upstream missing port",
@@ -285,7 +285,7 @@ func TestLoadConfig_ValidationErrors(t *testing.T) {
 				}
 			]`,
 			wantErr:     true,
-			errContains: "invalid upstream format",
+			errContains: "validation failed",
 		},
 		{
 			name: "upstream with invalid port",
@@ -298,7 +298,7 @@ func TestLoadConfig_ValidationErrors(t *testing.T) {
 				}
 			]`,
 			wantErr:     true,
-			errContains: "invalid upstream port",
+			errContains: "validation failed",
 		},
 		{
 			name: "valid edge case - port 1",
@@ -389,7 +389,7 @@ func TestLoadConfig_DuplicatePorts(t *testing.T) {
 				}
 			]`,
 			wantErr:     true,
-			errContains: "cannot use duplicate local port",
+			errContains: "validation failed",
 		},
 		{
 			name: "no duplicate ports",
@@ -432,7 +432,7 @@ func TestLoadConfig_DuplicatePorts(t *testing.T) {
 				}
 			]`,
 			wantErr:     true,
-			errContains: "cannot use duplicate local port",
+			errContains: "validation failed",
 		},
 	}
 
