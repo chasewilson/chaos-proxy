@@ -86,10 +86,6 @@ func handleConnection(client net.Conn, route config.RouteConfig, routeLogger *sl
 
 	routeLogger.Debug("starting data forwarding", "address", clientAddr, "upstream", route.Upstream)
 	go func() {
-		if curse.StartDelay > 0 {
-			routeLogger.Info("[CHAOS] adding delay to upstream", "address", clientAddr, "upstream", route.Upstream, "delay", curse.StartDelay)
-			time.Sleep(curse.StartDelay)
-		}
 		written, _ := io.Copy(client, server)
 		client.Close()
 		server.Close()
@@ -99,6 +95,10 @@ func handleConnection(client net.Conn, route config.RouteConfig, routeLogger *sl
 	}()
 
 	go func() {
+		if curse.StartDelay > 0 {
+			routeLogger.Info("adding delay before forwarding to upstream", "address", clientAddr, "upstream", route.Upstream, "delay", curse.StartDelay)
+			time.Sleep(curse.StartDelay)
+		}
 		written, _ := io.Copy(server, client)
 		client.Close()
 		server.Close()
