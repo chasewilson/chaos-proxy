@@ -96,6 +96,8 @@ func handleConnection(client net.Conn, route config.RouteConfig, routeLogger *sl
 			direction: "to-client",
 			bytes:     written}
 		done <- struct{}{}
+		client.Close()
+		server.Close()
 	}()
 
 	go func() {
@@ -104,6 +106,8 @@ func handleConnection(client net.Conn, route config.RouteConfig, routeLogger *sl
 			direction: "to-server",
 			bytes:     written}
 		done <- struct{}{}
+		client.Close()
+		server.Close()
 	}()
 
 	var bytesToClient, bytesToServer int64
