@@ -82,7 +82,6 @@ func handleConnection(client net.Conn, route config.RouteConfig, routeLogger *sl
 		return
 	}
 
-	done := make(chan struct{}, 2)
 	bytesResults := make(chan bytesTransferred, 2)
 
 	routeLogger.Debug("starting data forwarding", "address", clientAddr, "upstream", route.Upstream)
@@ -92,22 +91,20 @@ func handleConnection(client net.Conn, route config.RouteConfig, routeLogger *sl
 			time.Sleep(curse.StartDelay)
 		}
 		written, _ := io.Copy(client, server)
+		client.Close()
+		server.Close()
 		bytesResults <- bytesTransferred{
 			direction: "to-client",
 			bytes:     written}
-		done <- struct{}{}
-		client.Close()
-		server.Close()
 	}()
 
 	go func() {
 		written, _ := io.Copy(server, client)
+		client.Close()
+		server.Close()
 		bytesResults <- bytesTransferred{
 			direction: "to-server",
 			bytes:     written}
-		done <- struct{}{}
-		client.Close()
-		server.Close()
 	}()
 
 	var bytesToClient, bytesToServer int64
@@ -126,6 +123,4 @@ func handleConnection(client net.Conn, route config.RouteConfig, routeLogger *sl
 		"bytes_to_server", bytesToServer)
 
 	routeLogger.Debug("connection closed", "address", clientAddr, "upstream", route.Upstream)
-
-	<-done
 }
