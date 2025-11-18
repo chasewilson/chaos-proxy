@@ -1,5 +1,66 @@
 # Progress Log
 
+## 2025-11-17 - Proxy Connection Handling Fixes & Requirement Alignment
+
+### Context 11-17
+
+Fixed several issues discovered during testing that affected connection handling, logging, and requirement compliance. Work focused on ensuring proper bidirectional data transfer completion, correct chaos behavior implementation, and graceful shutdown behavior.
+
+### Keep-Alive Connection Blocking Fix
+
+**Problem identified**: Byte transfer logging wasn't appearing when using Go's HTTP test servers, but worked fine with Python's `http.server`. Investigation revealed that Go's `http.ListenAndServe` uses HTTP/1.1 keep-alive, keeping connections open, while Python's server closes connections after each request.
+
+**Root cause**: The proxy was waiting for both `io.Copy` operations to complete before logging byte transfers. With keep-alive connections, one `io.Copy` would block indefinitely waiting for EOF that never came, preventing the logging code from executing.
+
+**Solution implemented**: Modified connection handling to close both connections when either side completes (matching requirement: "until either side closes"). This ensures:
+- When one `io.Copy` completes, connections are closed immediately
+- The other `io.Copy` sees the closed connection and returns promptly
+- Byte transfer logging always executes, even with keep-alive connections
+- All data already written (in TCP buffers) is safely delivered before closing
+
+**Key learning**: Different HTTP server implementations handle connection lifecycle differently. Go's standard HTTP server uses keep-alive by default, which requires explicit connection closing to ensure proxy operations complete. This highlighted the importance of testing with multiple server implementations to catch edge cases.
+
+### Connection Close Cleanup
+
+**Refinement**: Simplified connection closing logic by removing redundant `done` channel. The code was already waiting for both goroutines via `bytesResults` channel, making the separate `done` channel unnecessary. This simplification reduces complexity while maintaining the same functionality.
+
+**Race condition prevention**: Initially added `sync.Once` to prevent both goroutines from closing connections simultaneously, but removed it after confirming that closing already-closed connections is safe in Go (no-op). The explicit closes in goroutines combined with `defer` statements provide sufficient safety.
+
+### Latency Delay Requirement Fix
+
+**Problem discovered**: Requirement specifies latency should delay "before forwarding begins", but implementation was applying delay on the server-to-client direction (after connection established, before reading from server).
+
+**Requirement clarification**: "latencyMs — artificial delay before forwarding begins" means the delay should happen before any data forwarding starts, which is the client-to-server direction (the first data transfer).
+
+**Solution**: Moved latency delay from the server-to-client goroutine to the client-to-server goroutine. This ensures:
+- Delay occurs before the first data packet is forwarded
+- Matches requirement specification exactly
+- Delay applies to the initial request direction (client → server)
+
+### Graceful Shutdown Route Failure Handling
+
+**Problem identified**: If any route failed to start (e.g., port already in use), the error handler called `os.Exit(1)` immediately from within a goroutine. This violated the graceful shutdown requirement of allowing in-flight connections to complete.
+
+**Solution implemented**: Added error state tracking using a mutex to coordinate error reporting:
+- Routes that fail to start log errors but don't immediately exit
+- Error state is tracked and logged
+- Program exits with error code only after all routes have attempted to start
+- In-flight connections on successful routes continue to completion
+
+**Design decision**: Used mutex-protected error tracking rather than error channels to keep the implementation simple. The mutex ensures thread-safe error state updates while allowing the main goroutine to wait for all route startup attempts before deciding on exit status.
+
+### Key Learnings & Reflections
+
+**Connection lifecycle understanding**: Working with keep-alive connections revealed the importance of understanding TCP connection semantics. The requirement "until either side closes" means we should close both connections when one side completes, but we need to ensure this happens after data transfer completes, not during.
+
+**Testing with multiple implementations**: Discovering the keep-alive issue only when testing with Go's HTTP server (vs Python's) highlighted the value of testing with different implementations. Different servers have different connection management strategies that can expose edge cases.
+
+**Requirement interpretation**: The latency delay fix demonstrated the importance of carefully reading requirements. "Before forwarding begins" has a specific meaning that differs from "before server response begins". This kind of detail matters for correctness.
+
+**Defensive programming**: The `defer` statements for connection closing serve as important safety nets. Even though goroutines explicitly close connections, the defers ensure cleanup happens even if goroutines panic or return early. This is a good pattern for resource management in concurrent code.
+
+---
+
 ## 2025-11-03 - Documentation Polish, Example Configs & Test Server Feature
 
 ### Context 11-03
