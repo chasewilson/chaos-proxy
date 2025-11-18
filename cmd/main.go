@@ -68,26 +68,38 @@ func main() {
 	}
 
 	slog.Info("starting listeners")
-	var wg sync.WaitGroup
+	var (
+		wg     sync.WaitGroup
+		hadErr bool
+		errMu  sync.Mutex
+	)
+
 	for _, route := range routeConfigs {
 		slog.Debug("calling ListenAndServeRoute", "port", route.LocalPort)
 		wg.Add(1)
 		go func(r config.RouteConfig) {
 			defer wg.Done()
-			listenerCtx, listenerCancel := context.WithCancel(ctx)
-			defer listenerCancel()
-			err := proxy.ListenAndServeRoute(listenerCtx, r)
+			err := proxy.ListenAndServeRoute(ctx, r)
 			if err != nil {
 				slog.Error("proxy listener failed",
 					"port", r.LocalPort,
 					"upstream", r.Upstream,
 					"error", err,
 					"hint", "check that the port is not already in use and you have necessary permissions")
-				os.Exit(1)
+
+				errMu.Lock()
+				hadErr = true
+				errMu.Unlock()
+				cancel()
 			}
 		}(route)
 	}
 
 	wg.Wait()
+
+	if hadErr {
+		os.Exit(1)
+	}
+
 	slog.Info("all routes shut down")
 }
